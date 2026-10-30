@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+data_cache/
+.DS_Store
+Octopus_Energy_Kraken_API.postman_collection.json
+tariff_comparison_report.html
