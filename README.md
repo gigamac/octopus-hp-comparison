@@ -44,12 +44,52 @@ octopus-hp-comparison/
 ├── gas_converter.py               # Gas m3 -> Heat Pump electricity using SCOP
 ├── compare.py                     # CLI tool with simulation, real data, and HTML generation
 ├── server.py                      # Optional lightweight companion server for 1-click in-browser updates
-├── data_cache/                    # Local persistent cache for electricity, gas & tariff rates
-├── tariff_comparison_report.html  # Interactive real-time dashboard with sliders & dialogue
-├── Octopus_Energy_Kraken_API.postman_collection.json # Preconfigured Postman collection
-├── .env                           # Your Octopus API credentials (kept private)
-└── README.md
+├── requirements.txt               # Python dependencies
+├── .env.example                   # Template for your credentials (copy to .env)
+├── README.md
+│
+│   # Generated locally / git-ignored (contain personal data):
+├── .env                           # Your Octopus API credentials
+├── data_cache/                    # Cached electricity, gas & tariff data
+└── tariff_comparison_report.html  # Generated interactive dashboard
 ```
+
+---
+
+## Getting Started
+
+### 1. Clone and install
+Requires Python 3.9+. The only third-party dependency is `requests`.
+```bash
+git clone https://github.com/gigamac/octopus-hp-comparison.git
+cd octopus-hp-comparison
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Create your `.env` from the template
+```bash
+cp .env.example .env
+```
+Then edit `.env` and fill in your details from the [Octopus developer dashboard](https://octopus.energy/dashboard/developer/):
+
+| Variable | Required | Description |
+|---|---|---|
+| `OCTOPUS_API_KEY` | Yes | Your personal API key (starts with `sk_live_`) |
+| `OCTOPUS_ACCOUNT_NUMBER` | Yes | Your account number, e.g. `A-12345678` |
+| `OCTOPUS_ELECTRICITY_MPAN` | No | Auto-discovered from your account if left blank |
+| `OCTOPUS_ELECTRICITY_SERIAL` | No | Auto-discovered from your account if left blank |
+| `OCTOPUS_REGION` | No | DNO region letter (e.g. `C`), auto-discovered if blank |
+
+> [!CAUTION]
+> `.env` contains your private API key and is listed in `.gitignore`. Never commit it.
+
+### 3. Generate your first report
+```bash
+python3 compare.py --battery 5 --html
+```
+Then open `tariff_comparison_report.html` in your browser.
 
 ---
 
@@ -71,7 +111,7 @@ python3 server.py
 python3 compare.py --serve
 ```
 
-### 2. Run Pure Post-Heat-Pump Period (15 Sep - Now)
+### 2. Run a Specific Date Range (e.g. since heat pump install)
 ```bash
 python3 compare.py --from 2026-09-15 --to 2026-10-30 --battery 5 --html
 ```
@@ -84,3 +124,9 @@ Double-click or open [`tariff_comparison_report.html`](./tariff_comparison_repor
 > When you open the HTML report, if the cached smart meter data is older than today, a subtle dialogue asks if you want to update.
 > - If `python3 server.py` is running, clicking **"Yes, Update Now"** automatically fetches recent readings from Kraken and updates the graphs live.
 > - If the server is offline, it provides a 1-click copyable terminal command to update the file directly.
+
+---
+
+## Contributing
+
+This project is not accepting contributions at the moment, but feel free to fork it.
