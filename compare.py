@@ -101,7 +101,7 @@ def generate_heatpump_demo_data(days: int = 30) -> Dict[str, Any]:
     }
 
 
-def print_cli_report(res: Dict[str, Any], gas_included: bool = False, scop: float = 3.5) -> None:
+def print_cli_report(res: Dict[str, Any], gas_included: bool = False, scop: float = 3.5, battery_cost: float = 3500.0) -> None:
     """Print the complete 4-way comparison report in the terminal."""
     s = res["summary"]
     sc = res["scenarios"]
@@ -153,6 +153,20 @@ def print_cli_report(res: Dict[str, Any], gas_included: bool = False, scop: floa
     print(f"   • On Cosy, the {b_size:.1f} kWh battery completely eliminates the {tou['peak_hours_kwh']:.1f} kWh peak ({tou['peak_hours_percentage']}%) by pre-charging")
     print("     at ~14.1p during 13:00-16:00, saving ~29.1p on every kWh shifted!")
     print(f"   • On Agile, afternoon grid rates are ~22-26p, so battery peak arbitrage is only ~10-15p.")
+
+    if b_size > 0 and battery_cost > 0:
+        ag_bat_sav = ag_b['total_cost_pounds'] - ag_bat['total_cost_pounds']
+        co_bat_sav = co_b['total_cost_pounds'] - co_bat['total_cost_pounds']
+        days = s['total_days'] or 1
+        ag_bat_annual = (ag_bat_sav / days) * 365.0
+        co_bat_annual = (co_bat_sav / days) * 365.0
+        ag_payback_str = f"{battery_cost / ag_bat_annual:.1f} years" if ag_bat_annual > 0 else "Never pays back"
+        co_payback_str = f"{battery_cost / co_bat_annual:.1f} years" if co_bat_annual > 0 else "Never pays back"
+        print(f"\n{bold}💰 BATTERY CAPITAL PAYBACK (£{battery_cost:,.0f} Install Cost):{reset}")
+        print(f"   • On Cosy:  Battery alone saves £{co_bat_sav:.2f} ({co_bat_annual:.2f}/yr) -> Simple Payback: {green}{co_payback_str}{reset}")
+        print(f"   • On Agile: Battery alone saves £{ag_bat_sav:.2f} ({ag_bat_annual:.2f}/yr) -> Simple Payback: {ag_payback_str}")
+        if days < 350:
+            print(f"   ⚠️  Seasonal Note: Projected from {days} days of data; full 12-month heating cycles will vary.")
     print("=" * 90 + "\n")
 
 
@@ -161,6 +175,7 @@ def generate_interactive_html_dashboard(
     agile_sc_day: float,
     cosy_sc_day: float,
     default_battery: float = 5.0,
+    default_battery_cost: float = 3500.0,
     default_scop: float = 3.5,
     gas_available: bool = True,
     filepath: str = "tariff_comparison_report.html",
@@ -368,6 +383,61 @@ def generate_interactive_html_dashboard(
             color: var(--cosy-bat-color);
             background: rgba(16, 185, 129, 0.12);
             font-weight: 600;
+        }}
+        /* PAYBACK PANEL */
+        .payback-panel {{
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 22px;
+            margin-bottom: 24px;
+        }}
+        .payback-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 10px;
+        }}
+        .payback-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }}
+        @media (max-width: 768px) {{
+            .payback-grid {{ grid-template-columns: 1fr; }}
+        }}
+        .payback-card {{
+            background: var(--bg-control);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px 18px;
+            transition: all 0.2s;
+        }}
+        .payback-card.winner-payback {{
+            border: 1.5px solid var(--cosy-bat-color);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.15);
+        }}
+        .payback-stat-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 13px;
+        }}
+        .payback-stat-row:last-child {{
+            border-bottom: none;
+        }}
+        .payback-stat-label {{
+            color: var(--text-secondary);
+        }}
+        .payback-stat-val {{
+            font-size: 14px;
+            color: var(--text-primary);
         }}
         /* CHARTS SECTION */
         .charts-container {{
@@ -596,6 +666,19 @@ def generate_interactive_html_dashboard(
                     <span style="font-size: 12px; color: var(--text-secondary);" id="usableCapacityText">Usable: {default_battery * 0.9:.1f} kWh (90% DoD)</span>
                 </div>
 
+                <!-- Battery Installed Cost -->
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Battery Installed Cost</span>
+                        <span class="control-val" id="batteryCostDisplay">£{default_battery_cost:,.0f}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--text-secondary); font-size: 15px; font-weight: 600;">£</span>
+                        <input type="number" id="batteryCostInput" min="0" max="30000" step="100" value="{default_battery_cost:.0f}" style="background: var(--bg-control); color: var(--text-primary); border: 1px solid var(--border-color); padding: 7px 12px; border-radius: 6px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                    </div>
+                    <span style="font-size: 12px; color: var(--text-secondary);">Capital supply & installation cost</span>
+                </div>
+
                 <!-- COP Slider -->
                 <div class="control-group">
                     <div class="control-label">
@@ -722,6 +805,72 @@ def generate_interactive_html_dashboard(
             </div>
         </div>
 
+        <!-- BATTERY PAYBACK & ROI PANEL -->
+        <div class="payback-panel" id="paybackPanel">
+            <div class="payback-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">💰</span>
+                    <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Battery Capital Investment & Payback Analysis</h3>
+                </div>
+                <div id="paybackRangeBadge" style="font-size: 12px; color: var(--text-secondary); background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    Based on selected range
+                </div>
+            </div>
+
+            <!-- Warning if range < 350 days -->
+            <div id="paybackSeasonalWarning" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: #fcd34d; line-height: 1.5;">
+                ⚠️ <strong>Seasonal Projection Notice:</strong> Selected date range is <strong id="paybackDaysCount">X</strong> days (&lt; 365 days). Annual savings and payback periods are annualized from this specific period and will differ over a full 12-month heating & cooling cycle.
+            </div>
+
+            <div class="payback-grid">
+                <!-- Agile + Battery Payback Card -->
+                <div class="payback-card" id="paybackCardAgile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 14px; font-weight: 600; color: var(--agile-bat-color);">3. Agile + Battery Payback</span>
+                        <span id="agileAnnualSavingBadge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(168, 85, 247, 0.15); color: var(--agile-bat-color); font-weight: 600;">+£0/yr</span>
+                    </div>
+                    <div class="payback-stat-row">
+                        <span class="payback-stat-label">Net Battery Annual Saving:</span>
+                        <strong class="payback-stat-val" id="agileAnnualSaving">£0.00 / yr</strong>
+                    </div>
+                    <div class="payback-stat-row">
+                        <span class="payback-stat-label">Estimated Simple Payback:</span>
+                        <strong class="payback-stat-val" id="agilePaybackYears" style="color: var(--agile-bat-color);">0.0 years</strong>
+                    </div>
+                    <div class="payback-stat-row">
+                        <span class="payback-stat-label">Annualized Return (ROI):</span>
+                        <strong class="payback-stat-val" id="agileRoiPct">0.0%</strong>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;" id="agilePaybackSubtext">
+                        Battery saves £0.00 over range vs Agile Base
+                    </div>
+                </div>
+
+                <!-- Cosy + Battery Payback Card -->
+                <div class="payback-card" id="paybackCardCosy">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 14px; font-weight: 600; color: var(--cosy-bat-color);">4. Cosy + Battery Payback</span>
+                        <span id="cosyAnnualSavingBadge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: var(--cosy-bat-color); font-weight: 600;">+£0/yr</span>
+                    </div>
+                    <div class="payback-stat-row">
+                        <span class="payback-stat-label">Net Battery Annual Saving:</span>
+                        <strong class="payback-stat-val" id="cosyAnnualSaving">£0.00 / yr</strong>
+                    </div>
+                    <div class="payback-stat-row">
+                        <span class="payback-stat-label">Estimated Simple Payback:</span>
+                        <strong class="payback-stat-val" id="cosyPaybackYears" style="color: var(--cosy-bat-color);">0.0 years</strong>
+                    </div>
+                    <div class="payback-stat-row">
+                        <span class="payback-stat-label">Annualized Return (ROI):</span>
+                        <strong class="payback-stat-val" id="cosyRoiPct">0.0%</strong>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;" id="cosyPaybackSubtext">
+                        Battery saves £0.00 over range vs Cosy Base
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- CHARTS SECTION -->
         <div class="charts-container">
             <div class="chart-card">
@@ -803,6 +952,7 @@ def generate_interactive_html_dashboard(
 
         function recalculate() {{
             const batteryCap = parseFloat(document.getElementById('batterySlider').value);
+            const batteryCost = parseFloat(document.getElementById('batteryCostInput').value) || 0;
             const scop = parseFloat(document.getElementById('scopSlider').value);
             const shiftPct = parseFloat(document.getElementById('shiftSlider').value) / 100.0;
             const includeGas = document.getElementById('gasToggle').checked;
@@ -810,6 +960,7 @@ def generate_interactive_html_dashboard(
             const exportMode = document.getElementById('exportTariffSelect') ? document.getElementById('exportTariffSelect').value : 'agile_outgoing';
 
             document.getElementById('batteryValDisplay').innerText = batteryCap.toFixed(0) + ' kWh';
+            document.getElementById('batteryCostDisplay').innerText = '£' + batteryCost.toLocaleString('en-GB', {{maximumFractionDigits: 0}});
             document.getElementById('usableCapacityText').innerText = 'Usable: ' + (batteryCap * 0.9).toFixed(1) + ' kWh (90% DoD)';
             document.getElementById('scopValDisplay').innerText = scop.toFixed(1);
             document.getElementById('shiftValDisplay').innerText = (shiftPct * 100).toFixed(0) + '%';
@@ -1013,6 +1164,109 @@ def generate_interactive_html_dashboard(
                     coExportElem.innerText = '⚡ Export Credit: +£' + (totalCosyExportCreditP / 100.0).toFixed(2);
                 }} else {{
                     coExportElem.style.display = 'none';
+                }}
+            }}
+
+            // Battery Payback & ROI Calculations
+            const agNetBatSaving = agBaseTotal - agBatTotal;
+            const coNetBatSaving = coBaseTotal - coBatTotal;
+            const agAnnualSaving = (agNetBatSaving / totalDays) * 365.0;
+            const coAnnualSaving = (coNetBatSaving / totalDays) * 365.0;
+
+            const formatPayback = (annualSaving, netSaving, tariffName) => {{
+                if (batteryCap <= 0) {{
+                    return {{
+                        yearsText: 'No battery selected (0 kWh)',
+                        roiText: '0.0%',
+                        badgeText: '£0/yr',
+                        annualText: '£0.00 / yr',
+                        subtext: 'Set battery size > 0 kWh to calculate payback'
+                    }};
+                }}
+                if (batteryCost <= 0) {{
+                    return {{
+                        yearsText: '0.0 years (Free install)',
+                        roiText: '∞%',
+                        badgeText: (annualSaving >= 0 ? '+' : '') + '£' + Math.round(annualSaving).toLocaleString('en-GB') + '/yr',
+                        annualText: (annualSaving >= 0 ? '£' : '-£') + Math.abs(annualSaving).toFixed(2) + ' / yr',
+                        subtext: 'Zero capital cost specified'
+                    }};
+                }}
+                if (annualSaving <= 0) {{
+                    return {{
+                        yearsText: 'Never pays back',
+                        roiText: '0.0%',
+                        badgeText: '£' + Math.round(annualSaving).toLocaleString('en-GB') + '/yr',
+                        annualText: '-£' + Math.abs(annualSaving).toFixed(2) + ' / yr',
+                        subtext: 'Battery does not generate net savings on this tariff over range'
+                    }};
+                }}
+                const years = batteryCost / annualSaving;
+                const roi = (annualSaving / batteryCost) * 100.0;
+                let yearsText = '';
+                if (years > 50) {{
+                    yearsText = '> 50 years';
+                }} else if (years < 1) {{
+                    const months = Math.round(years * 12);
+                    yearsText = years.toFixed(1) + ' years (~' + months + ' mo)';
+                }} else {{
+                    const wholeYears = Math.floor(years);
+                    const remMonths = Math.round((years - wholeYears) * 12);
+                    yearsText = years.toFixed(1) + ' years' + (remMonths > 0 ? ' (' + wholeYears + 'y ' + remMonths + 'm)' : '');
+                }}
+
+                return {{
+                    yearsText: yearsText,
+                    roiText: roi.toFixed(1) + '%',
+                    badgeText: '+' + '£' + Math.round(annualSaving).toLocaleString('en-GB') + '/yr',
+                    annualText: '£' + annualSaving.toFixed(2) + ' / yr',
+                    subtext: 'Battery saves £' + netSaving.toFixed(2) + ' over ' + totalDays + ' days vs ' + tariffName + ' Base'
+                }};
+            }};
+
+            const agMetrics = formatPayback(agAnnualSaving, agNetBatSaving, 'Agile');
+            const coMetrics = formatPayback(coAnnualSaving, coNetBatSaving, 'Cosy');
+
+            document.getElementById('agileAnnualSaving').innerText = agMetrics.annualText;
+            document.getElementById('agileAnnualSavingBadge').innerText = agMetrics.badgeText;
+            document.getElementById('agilePaybackYears').innerText = agMetrics.yearsText;
+            document.getElementById('agileRoiPct').innerText = agMetrics.roiText;
+            document.getElementById('agilePaybackSubtext').innerText = agMetrics.subtext;
+
+            document.getElementById('cosyAnnualSaving').innerText = coMetrics.annualText;
+            document.getElementById('cosyAnnualSavingBadge').innerText = coMetrics.badgeText;
+            document.getElementById('cosyPaybackYears').innerText = coMetrics.yearsText;
+            document.getElementById('cosyRoiPct').innerText = coMetrics.roiText;
+            document.getElementById('cosyPaybackSubtext').innerText = coMetrics.subtext;
+
+            document.getElementById('paybackRangeBadge').innerText = 'Based on ' + totalDays + ' days • Capital: £' + batteryCost.toLocaleString('en-GB', {{maximumFractionDigits: 0}});
+            const warnElem = document.getElementById('paybackSeasonalWarning');
+            if (warnElem) {{
+                if (totalDays < 350) {{
+                    warnElem.style.display = 'block';
+                    document.getElementById('paybackDaysCount').innerText = totalDays;
+                }} else {{
+                    warnElem.style.display = 'none';
+                }}
+            }}
+
+            const agCard = document.getElementById('paybackCardAgile');
+            const coCard = document.getElementById('paybackCardCosy');
+            if (agCard && coCard) {{
+                agCard.classList.remove('winner-payback');
+                coCard.classList.remove('winner-payback');
+                if (batteryCap > 0 && batteryCost > 0) {{
+                    if (coAnnualSaving > 0 && agAnnualSaving > 0) {{
+                        if (coAnnualSaving >= agAnnualSaving) {{
+                            coCard.classList.add('winner-payback');
+                        }} else {{
+                            agCard.classList.add('winner-payback');
+                        }}
+                    }} else if (coAnnualSaving > 0) {{
+                        coCard.classList.add('winner-payback');
+                    }} else if (agAnnualSaving > 0) {{
+                        agCard.classList.add('winner-payback');
+                    }}
                 }}
             }}
 
@@ -1269,6 +1523,7 @@ def generate_interactive_html_dashboard(
 
         // Listeners
         document.getElementById('batterySlider').addEventListener('input', recalculate);
+        document.getElementById('batteryCostInput').addEventListener('input', recalculate);
         document.getElementById('scopSlider').addEventListener('input', recalculate);
         document.getElementById('shiftSlider').addEventListener('input', recalculate);
         document.getElementById('gasToggle').addEventListener('change', recalculate);
@@ -1294,6 +1549,7 @@ def run_comparison_pipeline(
     period_from: Optional[str] = None,
     period_to: Optional[str] = None,
     battery: float = 5.0,
+    battery_cost: float = 3500.0,
     gas: bool = False,
     scop: float = 3.5,
     boiler_eff: float = 0.85,
@@ -1416,7 +1672,7 @@ def run_comparison_pipeline(
     )
     report = comparator.compare_four_way(battery_kwh=battery)
     if not quiet:
-        print_cli_report(report, gas_included=gas, scop=scop)
+        print_cli_report(report, gas_included=gas, scop=scop, battery_cost=battery_cost)
 
     # Build rich daily records for the interactive browser dashboard
     daily_map: Dict[str, Dict[str, Any]] = {}
@@ -1486,6 +1742,7 @@ def run_comparison_pipeline(
             agile_sc_day=agile_sc / 100.0,
             cosy_sc_day=cosy_sc / 100.0,
             default_battery=battery,
+            default_battery_cost=battery_cost,
             default_scop=scop,
             gas_available=len(gas_consumption) > 0,
         )
@@ -1507,6 +1764,7 @@ def main():
     parser.add_argument("--from", dest="period_from", type=str, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--to", dest="period_to", type=str, help="End date (YYYY-MM-DD)")
     parser.add_argument("--battery", type=float, default=5.0, help="Battery capacity in kWh for terminal summary (default: 5.0)")
+    parser.add_argument("--battery-cost", type=float, default=3500.0, help="Installed battery cost in GBP (default: 3500.0)")
     parser.add_argument("--gas", action="store_true", help="Include converted past gas heating using Seasonal COP")
     parser.add_argument("--scop", type=float, default=3.5, help="Seasonal COP for heat pump gas conversion (default: 3.5)")
     parser.add_argument("--boiler-eff", type=float, default=0.85, help="Gas boiler efficiency (default: 0.85)")
@@ -1532,7 +1790,7 @@ def main():
             cosy_standing_charge_p_day=42.3,
         )
         report = comparator.compare_four_way(battery_kwh=args.battery)
-        print_cli_report(report, gas_included=False, scop=args.scop)
+        print_cli_report(report, gas_included=False, scop=args.scop, battery_cost=args.battery_cost)
         return
 
     run_comparison_pipeline(
@@ -1540,6 +1798,7 @@ def main():
         period_from=args.period_from,
         period_to=args.period_to,
         battery=args.battery,
+        battery_cost=args.battery_cost,
         gas=args.gas,
         scop=args.scop,
         boiler_eff=args.boiler_eff,
